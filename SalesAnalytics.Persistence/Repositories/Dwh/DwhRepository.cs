@@ -5,17 +5,16 @@ using Microsoft.Extensions.Configuration;
 using SalesAnalytics.Application.Repositories;
 using SalesAnalytics.Domain.Entities.Dwh.Dimensions;
 using SalesAnalytics.Persistence.Extensions;
-using SalesAnalytics.Persistence.Repositories.Dwh.Context; // Usamos el nuevo contexto
+using SalesAnalytics.Persistence.Repositories.Dwh.Context; 
 using System.Data;
 
 namespace SalesAnalytics.Persistence.Repositories.Dwh
 {
     public class DwhRepository : IDwhRepository
     {
-        private readonly SalesDwhContext _context; // Cambiado a SalesDwhContext
+        private readonly SalesDwhContext _context; 
         private readonly string _connectionString;
 
-        // Inyectamos SalesDwhContext
         public DwhRepository(SalesDwhContext context, IConfiguration configuration)
         {
             _context = context;
@@ -35,9 +34,6 @@ namespace SalesAnalytics.Persistence.Repositories.Dwh
             await _context.Database.ExecuteSqlRawAsync("DBCC CHECKIDENT ('Dimension.DimProduct', RESEED, 0)");
             await _context.Database.ExecuteSqlRawAsync("DBCC CHECKIDENT ('Dimension.DimStatus', RESEED, 0)");
         }
-
-        // ... (Tus métodos BulkInsertAsync y Load...BulkAsync se quedan igual) ...
-        // ... Solo asegúrate de copiar el método BulkInsertAsync privado aquí también ...
 
         private async Task BulkInsertAsync<T>(IEnumerable<T> data, string tableName)
         {

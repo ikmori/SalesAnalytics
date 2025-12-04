@@ -51,27 +51,26 @@ namespace SalesAnalytics.Application.Services
             {
                 _logger.LogInformation(">>> 1. Extracción (E)");
 
-                // Obtenemos la ruta base desde appsettings.json
+
                 string csvBasePath = _configuration["CsvSettings:BasePath"]
                                      ?? throw new Exception("CsvSettings:BasePath no configurado");
 
-                // Lanzamos las 4 lecturas de CSV en paralelo
                 var taskCustomers = _customerCsvReader.ReadFileAsync(Path.Combine(csvBasePath, "customers.csv"));
                 var taskProducts = _productCsvReader.ReadFileAsync(Path.Combine(csvBasePath, "products.csv"));
                 var taskOrders = _orderCsvReader.ReadFileAsync(Path.Combine(csvBasePath, "orders.csv"));
                 var taskDetails = _orderDetailCsvReader.ReadFileAsync(Path.Combine(csvBasePath, "order_details.csv"));
 
-                // Si tienes DB, descomenta:
+                
                 // var taskDbSales = _dbReader.GetSalesAsync();
 
-                // Esperamos a que todo termine
+                //esperamos a que todo termine
                 await Task.WhenAll(taskCustomers, taskProducts, taskOrders, taskDetails /*, taskDbSales */);
 
                 var csvCustomers = taskCustomers.Result;
                 var csvProducts = taskProducts.Result;
                 var csvOrders = taskOrders.Result;
                 var csvDetails = taskDetails.Result;
-                // var dbSales = taskDbSales.Result;
+                //var dbSales = taskDbSales.Result;
 
                 _logger.LogInformation($"Leídos: {csvCustomers.Count()} clientes, {csvProducts.Count()} productos, {csvOrders.Count()} ordenes.");
 
@@ -79,11 +78,10 @@ namespace SalesAnalytics.Application.Services
 
                 await _dwhRepository.CleanTablesAsync();
 
-                // ---------------- DIM FECHAS ----------------
                 var dimDates = GenerateDateDimension(2023, 2026);
                 await _dwhRepository.LoadDatesBulkAsync(dimDates);
 
-                // ---------------- DIM CUSTOMER ----------------
+               
                 var dimCustomers = csvCustomers
                     .Select(c => new DimCustomer
                     {
@@ -93,14 +91,14 @@ namespace SalesAnalytics.Application.Services
                         City = c.City,
                         Country = c.Country
                     })
-                    // .Concat(...) // Aquí concatenarías los clientes de DB si los tuvieras
+                    // .Concat(...) // Aqui conxion DB si los tuvieras
                     .GroupBy(c => c.CustomerID_NK)
                     .Select(g => g.First())
                     .ToList();
 
                 await _dwhRepository.LoadCustomersBulkAsync(dimCustomers);
 
-                // ---------------- DIM PRODUCT ----------------
+                
                 var dimProducts = csvProducts
                     .Select(p => new DimProduct
                     {
@@ -115,7 +113,7 @@ namespace SalesAnalytics.Application.Services
 
                 await _dwhRepository.LoadProductsBulkAsync(dimProducts);
 
-                // ---------------- DIM STATUS ----------------
+               
                 var dimStatuses = csvOrders
                     .Select(o => o.Status)
                     .Distinct()
@@ -124,7 +122,7 @@ namespace SalesAnalytics.Application.Services
 
                 await _dwhRepository.LoadStatusBulkAsync(dimStatuses);
 
-                // ---------------- RECUPERAR IDS (LOOKUPS) ----------------
+                
                 _logger.LogInformation("Recuperando Surrogate Keys...");
 
                 var dbCust = await _dwhRepository.GetCustomersAsync();
@@ -135,19 +133,19 @@ namespace SalesAnalytics.Application.Services
                 var prodDict = dbProd.ToDictionary(k => k.ProductID_NK, v => v.ProductKey);
                 var statDict = dbStat.ToDictionary(k => k.StatusName, v => v.StatusKey);
 
-                // ---------------- FACT SALES ----------------
+                // factsales
                 _logger.LogInformation("Construyendo FactTable...");
 
                 var factSales = new List<FactSale>();
 
-                // Diccionario de Ordenes para búsqueda rápida
+                
                 var ordersMap = csvOrders.ToDictionary(o => o.OrderID, o => o);
 
                 foreach (var detail in csvDetails)
                 {
                     if (ordersMap.TryGetValue(detail.OrderID, out var order))
                     {
-                        // Buscamos las llaves (Surrogate Keys)
+                     
                         int cKey = custDict.TryGetValue(order.CustomerID, out int ck) ? ck : -1;
                         int pKey = prodDict.TryGetValue(detail.ProductID, out int pk) ? pk : -1;
                         int sKey = statDict.TryGetValue(order.Status, out int sk) ? sk : -1;
