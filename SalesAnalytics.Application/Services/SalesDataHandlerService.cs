@@ -1,85 +1,208 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using ClassLibrary2.Models;
+using Microsoft.Extensions.Configuration; // Necesario para IConfiguration
 using Microsoft.Extensions.Logging;
 using SalesAnalytics.Application.Interfaces;
 using SalesAnalytics.Application.Repositories;
 using SalesAnalytics.Application.Result;
 using SalesAnalytics.Domain.Entities.Csv;
-using SalesAnalytics.Domain.Repository;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+// using SalesAnalytics.Domain.Entities.Db; // Descomenta si usas Db
+using SalesAnalytics.Domain.Entities.Dwh.Dimensions;
+using SalesAnalytics.Domain.Repository; // Para IFileReaderRepository
 
 namespace SalesAnalytics.Application.Services
 {
-    internal class SalesDataHandlerService: ISalesDataHandlerService
+    public class SalesDataHandlerService : ISalesDataHandlerService
     {
-        private readonly IConfiguration _configuration;
         private readonly ILogger<SalesDataHandlerService> _logger;
-        private readonly IDwhRepository _dwhRepo;
+        private readonly IConfiguration _configuration;
 
-        // Fuentes de API
-        private readonly ICustomerApiRepository _customerApiRepo;
-        private readonly IProductApiRepository _productApiRepo;
-
-        // Fuente de Base de Datos
-        private readonly ISaleRepository _saleDbRepo;
-
-        // Fuentes de CSV
-        private readonly IFileReaderRepository<Products> _productCsvReader;
+        // Inyectamos 4 repositorios genéricos, uno para cada archivo
         private readonly IFileReaderRepository<Customers> _customerCsvReader;
-        private readonly IFileReaderRepository<Orders> _saleCsvReader;
+        private readonly IFileReaderRepository<Products> _productCsvReader;
+        private readonly IFileReaderRepository<Orders> _orderCsvReader;
+        private readonly IFileReaderRepository<OrderDetails> _orderDetailCsvReader;
 
-        public SalesDataHandlerService(ILogger<SalesDataHandlerService> logger,
-                                       IConfiguration configuration,
-                                       IDwhRepository dwhRepo,
-                                       ICustomerApiRepository customerApiRepo,
-                                       IProductApiRepository productApiRepo,
-                                       ISaleRepository saleDbRepo,
-                                       IFileReaderRepository<Products> productCsvReader,
-                                       IFileReaderRepository<Customers> customerCsvReader,
-                                       IFileReaderRepository<Orders> saleCsvReader)
+        private readonly ISaleRepository _dbReader;
+        private readonly IDwhRepository _dwhRepository;
+
+        public SalesDataHandlerService(
+            ILogger<SalesDataHandlerService> logger,
+            IConfiguration configuration,
+            IFileReaderRepository<Customers> customerCsvReader,
+            IFileReaderRepository<Products> productCsvReader,
+            IFileReaderRepository<Orders> orderCsvReader,
+            IFileReaderRepository<OrderDetails> orderDetailCsvReader,
+            ISaleRepository dbReader,
+            IDwhRepository dwhRepository)
         {
             _logger = logger;
-            _dwhRepo = dwhRepo;
-            _customerApiRepo = customerApiRepo;
-            _productApiRepo = productApiRepo;
-            _saleDbRepo = saleDbRepo;
-            _productCsvReader = productCsvReader;
+            _configuration = configuration;
             _customerCsvReader = customerCsvReader;
-            _saleCsvReader = saleCsvReader;
+            _productCsvReader = productCsvReader;
+            _orderCsvReader = orderCsvReader;
+            _orderDetailCsvReader = orderDetailCsvReader;
+            _dbReader = dbReader;
+            _dwhRepository = dwhRepository;
         }
-
-        //string basePath = @"C:\Users\ellia\Desktop\Bigdata\Archivo CSV Análisis de Ventas-20250923";
-        //movi eso para el appsettings.json del worker y anadi el configutation para que no este hardcodeado
 
         public async Task<ServiceResult> ProcessSalesDataAsync()
         {
-
-            string basePath = _configuration["EtlSettings:CsvBasePath"];
-            if (string.IsNullOrEmpty(basePath))
+            try
             {
-                _logger.LogError("La ruta 'EtlSettings:CsvBasePath' no está configurada en appsettings.json.");
-                
-                throw new InvalidOperationException("Configuración de CsvBasePath no encontrada.");
+                _logger.LogInformation(">>> 1. Extracción (E)");
+
+                // Obtenemos la ruta base desde appsettings.json
+                string csvBasePath = _configuration["CsvSettings:BasePath"]
+                                     ?? throw new Exception("CsvSettings:BasePath no configurado");
+
+                // Lanzamos las 4 lecturas de CSV en paralelo
+                var taskCustomers = _customerCsvReader.ReadFileAsync(Path.Combine(csvBasePath, "customers.csv"));
+                var taskProducts = _productCsvReader.ReadFileAsync(Path.Combine(csvBasePath, "products.csv"));
+                var taskOrders = _orderCsvReader.ReadFileAsync(Path.Combine(csvBasePath, "orders.csv"));
+                var taskDetails = _orderDetailCsvReader.ReadFileAsync(Path.Combine(csvBasePath, "order_details.csv"));
+
+                // Si tienes DB, descomenta:
+                // var taskDbSales = _dbReader.GetSalesAsync();
+
+                // Esperamos a que todo termine
+                await Task.WhenAll(taskCustomers, taskProducts, taskOrders, taskDetails /*, taskDbSales */);
+
+                var csvCustomers = taskCustomers.Result;
+                var csvProducts = taskProducts.Result;
+                var csvOrders = taskOrders.Result;
+                var csvDetails = taskDetails.Result;
+                // var dbSales = taskDbSales.Result;
+
+                _logger.LogInformation($"Leídos: {csvCustomers.Count()} clientes, {csvProducts.Count()} productos, {csvOrders.Count()} ordenes.");
+
+                _logger.LogInformation(">>> 2. Transformación y Carga (T & L)");
+
+                await _dwhRepository.CleanTablesAsync();
+
+                // ---------------- DIM FECHAS ----------------
+                var dimDates = GenerateDateDimension(2023, 2026);
+                await _dwhRepository.LoadDatesBulkAsync(dimDates);
+
+                // ---------------- DIM CUSTOMER ----------------
+                var dimCustomers = csvCustomers
+                    .Select(c => new DimCustomer
+                    {
+                        CustomerID_NK = c.CustomerID,
+                        CustomerName = $"{c.FirstName} {c.LastName}",
+                        Email = c.Email,
+                        City = c.City,
+                        Country = c.Country
+                    })
+                    // .Concat(...) // Aquí concatenarías los clientes de DB si los tuvieras
+                    .GroupBy(c => c.CustomerID_NK)
+                    .Select(g => g.First())
+                    .ToList();
+
+                await _dwhRepository.LoadCustomersBulkAsync(dimCustomers);
+
+                // ---------------- DIM PRODUCT ----------------
+                var dimProducts = csvProducts
+                    .Select(p => new DimProduct
+                    {
+                        ProductID_NK = p.ProductID,
+                        ProductName = p.ProductName,
+                        Category = p.Category,
+                        Price = p.Price
+                    })
+                    .GroupBy(p => p.ProductID_NK)
+                    .Select(g => g.First())
+                    .ToList();
+
+                await _dwhRepository.LoadProductsBulkAsync(dimProducts);
+
+                // ---------------- DIM STATUS ----------------
+                var dimStatuses = csvOrders
+                    .Select(o => o.Status)
+                    .Distinct()
+                    .Select(s => new DimStatus { StatusName = s })
+                    .ToList();
+
+                await _dwhRepository.LoadStatusBulkAsync(dimStatuses);
+
+                // ---------------- RECUPERAR IDS (LOOKUPS) ----------------
+                _logger.LogInformation("Recuperando Surrogate Keys...");
+
+                var dbCust = await _dwhRepository.GetCustomersAsync();
+                var dbProd = await _dwhRepository.GetProductsAsync();
+                var dbStat = await _dwhRepository.GetStatusesAsync();
+
+                var custDict = dbCust.ToDictionary(k => k.CustomerID_NK, v => v.CustomerKey);
+                var prodDict = dbProd.ToDictionary(k => k.ProductID_NK, v => v.ProductKey);
+                var statDict = dbStat.ToDictionary(k => k.StatusName, v => v.StatusKey);
+
+                // ---------------- FACT SALES ----------------
+                _logger.LogInformation("Construyendo FactTable...");
+
+                var factSales = new List<FactSale>();
+
+                // Diccionario de Ordenes para búsqueda rápida
+                var ordersMap = csvOrders.ToDictionary(o => o.OrderID, o => o);
+
+                foreach (var detail in csvDetails)
+                {
+                    if (ordersMap.TryGetValue(detail.OrderID, out var order))
+                    {
+                        // Buscamos las llaves (Surrogate Keys)
+                        int cKey = custDict.TryGetValue(order.CustomerID, out int ck) ? ck : -1;
+                        int pKey = prodDict.TryGetValue(detail.ProductID, out int pk) ? pk : -1;
+                        int sKey = statDict.TryGetValue(order.Status, out int sk) ? sk : -1;
+
+                        if (cKey != -1 && pKey != -1)
+                        {
+                            factSales.Add(new FactSale
+                            {
+                                DateKey = int.Parse(order.OrderDate.ToString("yyyyMMdd")),
+                                CustomerKey = cKey,
+                                ProductKey = pKey,
+                                StatusKey = sKey,
+                                OrderID_NK = order.OrderID,
+                                Quantity = detail.Quantity,
+                                TotalPrice = detail.TotalPrice
+                            });
+                        }
+                    }
+                }
+
+                await _dwhRepository.LoadFactsBulkAsync(factSales);
+
+                return new ServiceResult { IsSuccess = true, Message = $"Procesados {factSales.Count} registros." };
             }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error en ETL");
+                return new ServiceResult { IsSuccess = false, Message = ex.Message };
+            }
+        }
 
-            //Extraccion de datos desde las diferentes fuentes
-            _logger.LogInformation("Extrayendo datos de APIs...");
-            var apiCustomers = await _customerApiRepo.GetCustomersAsync();
-            var apiProducts = await _productApiRepo.GetProductsAsync();
+        private List<DimDate> GenerateDateDimension(int startYear, int endYear)
+        {
+            var dates = new List<DimDate>();
+            var startDate = new DateTime(startYear, 1, 1);
+            var endDate = new DateTime(endYear, 12, 31);
 
-            _logger.LogInformation("Extrayendo datos de Base de Datos...");
-            var dbSales = await _saleDbRepo.GetSaleAsync();
+            for (var dt = startDate; dt <= endDate; dt = dt.AddDays(1))
+            {
+                dates.Add(new DimDate
+                {
+                    DateKey = int.Parse(dt.ToString("yyyyMMdd")),
 
-            _logger.LogInformation("Extrayendo datos de CSVs...");
-            var csvProducts = await _productCsvReader.ReadFileAsync(Path.Combine(basePath, "products.csv"));
-            var csvCustomers = await _customerCsvReader.ReadFileAsync(Path.Combine(basePath, "customers.csv"));
-            var csvSales = await _saleCsvReader.ReadFileAsync(Path.Combine(basePath, "orders.csv")); 
+                    FullDate = DateOnly.FromDateTime(dt),
 
-
-            throw new NotImplementedException();
+                    Day = dt.Day,
+                    Month = dt.Month,
+                    MonthName = dt.ToString("MMMM"),
+                    Year = dt.Year,
+                    Quarter = (dt.Month - 1) / 3 + 1,
+                    DayOfWeek = dt.DayOfWeek.ToString(),
+                    DayOfYear = dt.DayOfYear
+                });
+            }
+            return dates;
         }
     }
 }

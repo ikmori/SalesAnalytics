@@ -2,13 +2,15 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ClassLibrary2.Models;
 [Table("FactSale", Schema = "Fact")]
 public class FactSale
 {
-    public long FactSalesId { get; set; }
+    [Key]
+    public long FactSalesID { get; set; }
 
     public int DateKey { get; set; }
 
@@ -17,11 +19,12 @@ public class FactSale
     public int ProductKey { get; set; }
 
     public int StatusKey { get; set; }
-
-    public int OrderIdNk { get; set; }
+    [Column("OrderID_NK")]
+    public int OrderID_NK { get; set; }
 
     public int Quantity { get; set; }
 
+    [Column(TypeName = "decimal(18, 2)")]
     public decimal TotalPrice { get; set; }
     /*
     public virtual DimCustomer CustomerKeyNavigation { get; set; }

@@ -2,6 +2,7 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SalesAnalytics.Domain.Entities.Dwh.Dimensions
@@ -9,9 +10,10 @@ namespace SalesAnalytics.Domain.Entities.Dwh.Dimensions
     [Table("DimCustomer", Schema = "Dimension")]
     public class DimCustomer
     {
+        [Key]
         public int CustomerKey { get; set; }
-
-        public int CustomerIdNk { get; set; }
+        [Column("CustomerID_NK")]
+        public int CustomerID_NK { get; set; }
 
         public string CustomerName { get; set; }
 

@@ -2,6 +2,7 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SalesAnalytics.Domain.Entities.Dwh.Dimensions
@@ -9,6 +10,7 @@ namespace SalesAnalytics.Domain.Entities.Dwh.Dimensions
     [Table("DimDate", Schema = "Dimension")]
     public class DimDate
     {
+        [Key]
         public int DateKey { get; set; }
 
         public DateOnly FullDate { get; set; }

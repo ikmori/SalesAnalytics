@@ -2,6 +2,7 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SalesAnalytics.Domain.Entities.Dwh.Dimensions
@@ -9,14 +10,15 @@ namespace SalesAnalytics.Domain.Entities.Dwh.Dimensions
     [Table("DimProduct", Schema = "Dimension")]
     public class DimProduct
     {
+        [Key]
         public int ProductKey { get; set; }
-
-        public int ProductIdNk { get; set; }
+        [Column("ProductID_NK")]
+        public int ProductID_NK { get; set; }
 
         public string ProductName { get; set; }
 
         public string Category { get; set; }
-
+        [Column(TypeName = "decimal(18, 2)")]
         public decimal? Price { get; set; }
 
         //public virtual ICollection<FactSale> FactSales { get; set; } = new List<FactSale>();

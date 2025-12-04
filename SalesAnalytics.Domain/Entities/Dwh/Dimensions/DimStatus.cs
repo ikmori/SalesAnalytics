@@ -2,6 +2,7 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SalesAnalytics.Domain.Entities.Dwh.Dimensions
@@ -9,6 +10,7 @@ namespace SalesAnalytics.Domain.Entities.Dwh.Dimensions
     [Table("DimStatus", Schema = "Dimension")]
     public class DimStatus
     {
+        [Key]
         public int StatusKey { get; set; }
 
         public string StatusName { get; set; }
