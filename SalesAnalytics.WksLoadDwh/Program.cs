@@ -3,11 +3,12 @@ using SalesAnalytics.Application.Interfaces;
 using SalesAnalytics.Application.Repositories;
 using SalesAnalytics.Application.Services;
 using SalesAnalytics.Domain.Repository;
-using SalesAnalytics.Persistence.Repositories; 
+
 using SalesAnalytics.Persistence.Repositories.Db;
 using SalesAnalytics.Persistence.Repositories.Db.Context;
 using SalesAnalytics.Persistence.Repositories.Dwh;
-using SalesAnalytics.Persistence.Repositories.Dwh.Context; 
+using SalesAnalytics.Persistence.Repositories.Dwh.Context;
+using SalesAnalytics.Persistence.Repositories.Api; 
 using SalesAnalytics.WksLoadDwh;
 
 IHost host = Host.CreateDefaultBuilder(args)
@@ -15,20 +16,26 @@ IHost host = Host.CreateDefaultBuilder(args)
     {
         IConfiguration configuration = hostContext.Configuration;
 
+        
         services.AddDbContext<SalesContext>(options =>
             options.UseSqlServer(configuration.GetConnectionString("SavDbConnection")));
 
         services.AddDbContext<SalesDwhContext>(options =>
             options.UseSqlServer(configuration.GetConnectionString("DwhConnection")));
 
+   
+        services.AddHttpClient();
 
         services.AddTransient(typeof(IFileReaderRepository<>), typeof(CsvSalesFileReaderRepository<>));
-        services.AddTransient<ISaleRepository, SaleRepository>();
 
- 
+        services.AddTransient<ISaleRepository, SaleRepository>();
         services.AddTransient<IDwhRepository, DwhRepository>();
 
+        services.AddTransient<ICustomerApiRepository, CustomerApiRepository>();
+        services.AddTransient<IProductApiRepository, ProductApiRepository>();
+
         services.AddTransient<ISalesDataHandlerService, SalesDataHandlerService>();
+
         services.AddHostedService<Worker>();
     })
     .Build();

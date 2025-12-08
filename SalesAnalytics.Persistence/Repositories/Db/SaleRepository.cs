@@ -6,14 +6,20 @@ namespace SalesAnalytics.Persistence.Repositories.Db
 {
     public class SaleRepository : ISaleRepository
     {
-        private readonly SalesContext context;
+        private readonly SalesContext _context;
+
         public SaleRepository(SalesContext context)
         {
-            this.context = context;
+            _context = context;
         }
+
         public async Task<IEnumerable<sale>> GetSaleAsync()
         {
-            return await this.context.Sales.ToListAsync();
+          
+            return await _context.Sales
+                                 .Include(s => s.orderDetails)
+                                 .AsNoTracking()
+                                 .ToListAsync();
         }
     }
 }

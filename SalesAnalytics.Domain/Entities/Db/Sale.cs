@@ -13,8 +13,10 @@ namespace SalesAnalytics.Domain.Entities.Db
 
         public string Status { get; set; }
 
-        //public virtual ICollection<DetallesVentum> DetallesVenta { get; set; } = new List<DetallesVentum>();
+        //[ForeignKey("IdVenta")]
 
-        //public virtual Cliente IdClienteNavigation { get; set; }
+        public virtual ICollection<orderDetails> orderDetails { get; set; } = new List<orderDetails>();
+        [ForeignKey("IdCliente")]
+        public virtual Customer IdClienteNavigation { get; set; }
     }
 }
