@@ -2,7 +2,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
 namespace SalesAnalytics.Domain.Entities.Db
 {
-    [Table("DetallesVentum")]
+    [Table("DetallesVenta")]
     public class orderDetails
     {
         [Key]
