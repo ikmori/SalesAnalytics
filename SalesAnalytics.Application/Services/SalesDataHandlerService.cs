@@ -1,13 +1,13 @@
 ﻿using ClassLibrary2.Models;
-using Microsoft.Extensions.Configuration; // Necesario para IConfiguration
+using Microsoft.Extensions.Configuration; 
 using Microsoft.Extensions.Logging;
 using SalesAnalytics.Application.Interfaces;
 using SalesAnalytics.Application.Repositories;
 using SalesAnalytics.Application.Result;
 using SalesAnalytics.Domain.Entities.Csv;
-// using SalesAnalytics.Domain.Entities.Db; // Descomenta si usas Db
+// using SalesAnalytics.Domain.Entities.Db; 
 using SalesAnalytics.Domain.Entities.Dwh.Dimensions;
-using SalesAnalytics.Domain.Repository; // Para IFileReaderRepository
+using SalesAnalytics.Domain.Repository; 
 
 namespace SalesAnalytics.Application.Services
 {
@@ -16,7 +16,7 @@ namespace SalesAnalytics.Application.Services
         private readonly ILogger<SalesDataHandlerService> _logger;
         private readonly IConfiguration _configuration;
 
-        // Inyectamos 4 repositorios genéricos, uno para cada archivo
+        
         private readonly IFileReaderRepository<Customers> _customerCsvReader;
         private readonly IFileReaderRepository<Products> _productCsvReader;
         private readonly IFileReaderRepository<Orders> _orderCsvReader;
